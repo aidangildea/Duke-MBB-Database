@@ -1,0 +1,301 @@
+---
+title: "Final Project"
+author:
+- Jessie Bierschenk
+- Aidan Gildea
+- Julia Mitchell
+- Naomi Rubin
+- Gaurav Sirdeshmukh
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include = FALSE}
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(rvest)
+library(readr)
+library(tidyverse)
+library(purrr)
+library(XML)
+library(janitor)
+library(stringr)
+library(ggplot2)
+library(kableExtra)
+```
+
+## Introduction
+
+This year, Duke witnessed a historic basketball season, with it being Coach K's last season and playing so well throughout the season and March Madness. Therefore, we decided to make our final project all about Duke men's basketball statistics. Our project scrapes Duke men's basketball data, about both the team and individual players, from the goduke.com website. We then created a Shiny app to present this data and allow users to look up individual player stats and access different summary statistic reports. The app incorporates visualizations relevant to team and individual data. Our goal is to create an app that provides the user with informative and accessible insights into team and player performance, while also being reproducible for future seasons.
+
+## Methods / Implementation
+
+The first half of our project is dedicated to scraping and cleaning the Duke
+Men's basketball data from the 2021-2022 season. We scraped this data from
+`https://goduke.com/sports/mens-basketball/stats`. For our project, we wanted to
+scrape that data on the team statistics and overall individual statistics. We 
+used selector gadget and inspected the pages to determine the best way to scrape 
+the data. We were able to find the xpath by inspecting the pages and hovering 
+over the element we wanted to scrape. We used xpaths that returned all of the
+data in html format for the "Team" and "Individual" pages. After scraping the
+data we had to clean it.
+
+We split the team and individual statistics into two separate data frames. For 
+the team statistics data frame, we had to clean the data in multiple ways. First,
+we added a variable "type" to indicate which category, (i.e. "Scoring", 
+"Shooting","Rebounding", etc.) the statistic falls under. We populated this
+variable for every statistics. We also renamed poorly labelled columns
+and cleaned the output of the rows. 
+
+For the individual statistics data frame, we also had to clean the data. First,
+we renamed the columns.The columns specify the statistic, unit, and the category 
+the statistic falls into ("minutes", "scoring", and "rebounds") if it is a repeated 
+column name (i.e. "AVG"). We also fixed the rows so that the "Player" column
+returns the row in a better format. Lastly,the html contains "conference", 
+"scoring", and "average" statistics in addition to "overall" but we only 
+included the "overall" data. We filtered the data frame for the overall data
+and removed all rows that were not in that data set.
+
+Then we developed our Shiny app. First, the user can interact with a drop down menu on the side panel and choose to view team stats or choose to view individual player stats. If the user chooses to view individual player stats, they then can interact with another drop down menu and choose from the roster which player's stats they would like to view. Upon pressing the action button, the main panel will produce the output corresponding to the appropriate selection. In the main panel, users can toggle between two panels, one for the overall stat line (in table format) or a summary visualization (in graph format). The content of the main panel will update dynamically when switching between the two tabs; however, if changing the input for the team/individual drop down, the user must press search again. The overall stat line is a table of statistics, either about the team's performance or an individual player's performance depending on the user's selection in the side panel. The summary visualization tab features a unique plot for team performance and a dynamic plot for individual performance. The graph for team performance allows users to compare the team's per game average statistics (ie. points per game, rebounds per game). The graph for individual performance allows users to compare the players' FG%, FT%, and 3PT%, with the player of interest's data points highlighted. Altogether, the app is an intuitive and east-to-use tool for users who want to explore the Duke Men's Basketball Team's performance during the 2021-2022 season. 
+
+## Discussion & Conclusions
+
+After scraping the data and creating a Shiny app, we feel that we have presented Duke men's basketball statistics in an informative, interactive, and user-friendly way. The app allows users to filter the data easily and look at a variety of different summary statistics. Although we are happy with the way that our app turned out, we feel that there is much we could expand upon in the future.
+
+In the future, we would be interested in expanding upon our project by scraping more data and adding more elements to our Shiny app. This could look like scraping data from previous years, scraping data about other teams, adding more visualizations to our Shiny app, and generally expanding the scope of our app.
+
+One of our main objectives was to ensure that our code is reproducible and generalizable. Every ACC school uses the same website for their athletics pages, and as such, team and individual data is formatted essentially identically. We could expand this app from just Duke basketball, to all of the ACC - and do so without having to worry about data frames being structured differently. This could open the door to many new visualizations and for comparisons between teams and our app would become more of an analytical tool than it currently is. An alternative to this would be to implement a fileInput() where the user can scrape and import data themselves. However, doing this scraping and cleaning ourselves and updating the app’s functionality to allow for team selection would benefit the user experience.
+
+### Data Wrangling: Team Statistics
+
+```{r}
+url <- read_html("https://goduke.com/sports/mens-basketball/stats")
+# xpath found using inspect and hovering over element
+team_stats <- url %>% html_nodes(xpath='//*[@id="team"]') %>% html_table()
+# Create "Type" variable to indicate which category of statistics
+type <- c("Scoring", "Shooting","Rebounding","Assists","Turnovers","Steals",
+          "Blocks", "Attendance")
+team_stats <- as.data.frame(team_stats) %>% mutate("Type" = NA)
+# Extract the name of the statistics
+team_stats$Statistic <- sub("\\r.*", "", team_stats$Statistic)
+# Rename the "Opponents" column
+names(team_stats)[names(team_stats) == "Opponents..............................OPP"] <- "Opponent"
+# Populate the "type" variable
+tally <- 0
+for (i in 1:nrow(team_stats)){
+  match <- match(team_stats$Duke[i], type[tally+1])
+  if (is.na(match) == FALSE) {tally = tally + 1}
+  team_stats$Type[i] = type[tally]
+  if (team_stats$Statistic[i] == "Per Game" |
+      team_stats$Statistic[i] == "Total"
+      | team_stats$Statistic[i] == "Margin") {
+    team_stats$Statistic[i] <-
+      paste0(team_stats$Type[i], " ", team_stats$Statistic[i])
+  }
+}
+# Move the type variable to an earlier column
+team_stats <- team_stats[!team_stats$Duke %in% type, ] %>% relocate(Type, .after = Statistic)
+knitr::kable(head(team_stats))
+```
+
+
+### Data Wrangling: Team Statistics
+
+```{r}
+# xpath found using inspect and hovering over element
+ind_stats <- url %>% html_nodes(xpath='//*[@id="individual"]') %>% html_table()
+# Save as data frame and remove irrelevant variables
+ind_stats <- as.data.frame(ind_stats) %>% select(-Bio.Link, -Var.28)
+type2 <- c("Minutes", "Scoring", "Rebounds")
+# Fix the names of the columns to include variable and units
+names(ind_stats) <- paste(names(ind_stats)," ",as.character(unlist(ind_stats[1,])))
+# Extract the proper column name from the header 
+# Indicate the type of stat when needed
+
+for (i in 1:ncol(ind_stats)){
+  results <- lapply(type2, function(x)str_extract(names(ind_stats)[i], x))
+  if (all(is.na(results))==TRUE) {
+    names(ind_stats)[i] <- sub("^\\S+\\s+", "",names(ind_stats)[i])
+    }
+}
+
+# Extract the player name from the "Player" column
+ind_stats$Player<- unlist(lapply(ind_stats$Player, function(x)str_extract(x, "[^\r]+")))
+# Remove the first row with that indicates units
+ind_stats <- ind_stats[-1,]
+# Rename the player number column as "Number"
+names(ind_stats)[names(ind_stats) == "X."] <- "Number"
+# Filter for the "Overall" individual stats
+remove <- 0
+for (i in seq(nrow(ind_stats))){
+  if (ind_stats$Player[i] == "Total"){
+    remove <- i
+    break
+  }
+}
+# Remove rows that are not the overall individual stats
+ind_stats <- ind_stats[-c(i:nrow(ind_stats)), ]
+team_table <- ind_stats[,1:6]
+knitr::kable(head(team_table))
+
+# Use for shiny app
+player_names <- ind_stats %>%
+  select(Player) %>%
+  unlist(use.names = FALSE) %>%
+  unique()
+```
+
+### Shiny App
+
+```{r shinyApp}
+library(shiny)
+library(purrr)
+library(htmltools)
+
+# create a shiny app
+shinyApp(
+  # create user interface (UI)
+  ui = fluidPage(
+    # app title and subtitle
+    titlePanel(HTML("Duke Men's Basketball 21-22", "<br>", "<font size=5><i>2021-2022 Season</i></font>")),
+    sidebarLayout(
+      # create sidebar panel
+      sidebarPanel(
+        h4("Statistic Type:"),
+        # drop down selection for team or individual statistics
+        selectInput("stats", "Choose Statistics Type", c("Team", "Individual")),
+        # panel conditional on individual being selected
+        conditionalPanel(
+          # individual selected as condition
+          condition = "input.stats== 'Individual'",
+          h4("Select Player"),
+          # select from list of players
+          selectInput("player", "Player:", choices = ind_stats$Player)
+        ),
+        # action button initiating output creation
+        actionButton("submit", "Search")
+      ),
+      # create main panel
+      mainPanel(
+        # create tabs
+        tabsetPanel(id = "tabSetPane", 
+                    # tab panel for overall season statistic table
+                    tabPanel("Statline", value = "stat",
+                             h3("Season Statline"),
+                            # table output
+                             uiOutput("table")
+                    ), 
+                    # tab panel for summary statistic visualization
+                    tabPanel("Summary Visualization", value = "summary",
+                             h3("Season Summary"),
+                             # graph output
+                             plotOutput("graph")
+                    )
+        )
+      ))),
+  # create working server
+  server = function(input, output, session) {
+    
+    # actions dependent on search button being pressed
+    observeEvent(input$submit, { #depending on statistic selection 
+      
+      # use team statistics if team is selected
+      if (input$stats == "Team" ) {
+        input_stats <- team_stats
+      }
+      # use individual statistics if individual is selected
+      else {
+        input_stats <- ind_stats %>%
+          # filter for selected plater
+          filter(Player == input$player) %>% t() %>% as.data.frame() %>%
+          mutate(Statistic = names(ind_stats)) %>% relocate(Statistic, before = V1)
+        names(input_stats) <- NULL
+      }
+      # output table of appropriate statistics
+      output$table <- renderTable(input_stats, na = "NA")
+    })
+    
+    # actions dependent on search button being pressed
+    observeEvent(input$submit, {
+      # create summary visual for team performance if team is selected
+      if (input$stats == "Team" ) {
+        # retrieve per game statistics (exluding attendance)
+        stats_pg <- team_stats %>% 
+          filter(grepl('Per Game', Statistic), !grepl('Attendance', Statistic)) %>%
+          select(Statistic, Duke, Type)
+        # convert variable values to type numeric
+        stats_pg$Duke <- as.numeric(stats_pg$Duke)
+        
+        # use ggplot to create visualization
+        plot <- ggplot(stats_pg, aes(x=Statistic, y=Duke)) + 
+          geom_point(stat = "identity", size=1, color = "blue") + 
+          # add labels to stats
+          geom_text(data=stats_pg,
+                    aes(label=Duke), nudge_x=0, nudge_y=5, 
+                    size = 3.5, show.legend = FALSE, color = "blue") + 
+          # create line connecting values to axis (~ similar to bar plot)
+          geom_segment(aes(x=Statistic, 
+                           xend=Statistic, 
+                           y=0, 
+                           yend=Duke), size = 10, lineend = "round",
+                       color = "blue") +
+          # label the graph appropriately
+          labs(title="Duke Performance Per Game", 
+               subtitle = substitute(paste(italic("2021-2022 Season"))),
+               x = "Statistic (per game)",
+               y = "Value") +
+          # flip coordinates
+          coord_flip()
+      }
+      # create summary visual for individual performance if individual is selected
+      if (input$stats == "Individual") {
+        # created highlight variable, where selected player is assigned "highlight"
+        ind_stats$highlight <- ifelse(ind_stats$Player == input$player, "highlight", "normal")
+        
+        # retrieve selected players FG%, FT%, and 3PT%
+        player <- ind_stats %>%
+          filter(Player == input$player) %>%
+          select(`FG%`, `FT%`, `3PT%`)
+        
+        # convert values to type numeric without removing column names
+        play_stats <- data.frame(lapply(player, function(x) as.numeric(as.character(x))),
+                   check.names=F)
+
+        # use ggplot to create visualization
+        plot <- ggplot(data = ind_stats,
+                       # create  point for FG% in circle shape
+                       mapping = aes(x= reorder(Player, as.numeric(`FG%`), mean),
+                                     y=as.numeric(`FG%`),
+                                     color = highlight), shape = 20) +
+          scale_color_manual("Player", values =  c("highlight" = "blue", "normal" = "grey50"))+
+          # adjust point size
+          geom_point(size = 2) +
+          # flip coordinates
+          coord_flip() +
+          # create point for FT% in triangle shape
+          geom_point(data = ind_stats,
+                     mapping = aes(x=Player,
+                                   y=as.numeric(`FT%`)), shape = 15, size = 2) +
+          # create point for 3PT% in square shape
+          geom_point(data = ind_stats,
+                     mapping = aes(x=Player,
+                                   y=as.numeric(`3PT%`)), shape = 17, size = 2) + 
+          # remove legend
+          theme(legend.position="none") +
+          # give axis appropriate titles
+          # title and caption are dynamic to represent selected player
+          # caption updates to reflect which stat the player performed best in
+          labs(title = paste0(sub(".*, ", "", input$player), " ", sub("\\,.*", "", input$player), "'s Season Statistics"), x="Player",  y="Percentage",
+               subtitle = "Circle: FG%, Triangle: FT%, Square: 3PT%",
+               caption = paste0("Key Stat: ", sub("\\,.*", "", input$player), " performed best in ", names(play_stats)[which(play_stats == max(play_stats), arr.ind=T)[, "col"]], " with a percentage of ", max(play_stats), ".")
+               )
+      }
+      # output summary visualization
+      output$graph <- renderPlot(plot,  width = "auto",
+                                 height = "auto")
+    })
+  }
+)
+```
